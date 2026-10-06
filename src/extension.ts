@@ -115,12 +115,25 @@ async function syncEverything(config: HubConfig, log: (message: string) => void)
   }
 }
 
-/** Another process holding the lock this long has died mid-sync. */
+/** A lock older than this is stale even if its pid now belongs to another program. */
 const STALE_LOCK_MS = 2 * HOUR_MS;
+
+function isAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: the process exists but belongs to someone else.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
 
 /**
  * Take the data folder's sync lock. Claude Desktop can run more than one
- * server process at a time, and two writers would fight over the index.
+ * server process at a time, and two writers would fight over the index. It
+ * also starts and kills servers quickly (to probe them, or when an extension
+ * is switched off), so a lock whose process is gone is taken over at once.
  */
 function acquireLock(lockPath: string): boolean {
   try {
@@ -128,7 +141,8 @@ function acquireLock(lockPath: string): boolean {
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    if (Date.now() - fs.statSync(lockPath).mtimeMs < STALE_LOCK_MS) return false;
+    const holder = Number(fs.readFileSync(lockPath, "utf8").trim());
+    if (isAlive(holder) && Date.now() - fs.statSync(lockPath).mtimeMs < STALE_LOCK_MS) return false;
     fs.writeFileSync(lockPath, String(process.pid));
     return true;
   }
@@ -137,9 +151,11 @@ function acquireLock(lockPath: string): boolean {
 export interface AutoSync {
   /** Sync now unless a sync is already running here or in another process. */
   runOnce(): Promise<void>;
-  /** Sync now if due, then check again every half hour. */
-  start(): void;
+  /** After `firstDelayMs`, sync if due, then check again every half hour. */
+  start(firstDelayMs: number): void;
   stop(): void;
+  /** Give up the lock if this process holds it; for shutdown. */
+  releaseLock(): void;
   status(): SyncStatus;
 }
 
@@ -150,7 +166,11 @@ export function createAutoSync(
   const syncAll = options.syncAll ?? syncEverything;
   const lockPath = path.join(path.dirname(config.dbPath), "sync.lock");
   const state: SyncStatus = { running: false, firstSync: false, lastSuccess: null, lastError: null };
-  let timer: NodeJS.Timeout | null = null;
+  let timers: NodeJS.Timeout[] = [];
+
+  const releaseLock = () => {
+    if (state.running && fs.existsSync(lockPath) && fs.readFileSync(lockPath, "utf8").trim() === String(process.pid)) fs.rmSync(lockPath, { force: true });
+  };
 
   const readState = (name: string) => {
     const db = openDb(config.dbPath);
@@ -196,15 +216,20 @@ export function createAutoSync(
 
   return {
     runOnce,
-    start() {
-      runIfDue();
+    start(firstDelayMs) {
+      // Waiting first leaves a server that is only probed and stopped untouched,
+      // and keeps the start-up handshake clear of a blocking git read.
+      const first = setTimeout(runIfDue, firstDelayMs);
       // Checking often and syncing only when due copes with a laptop that slept through a timer.
-      timer = setInterval(runIfDue, HOUR_MS / 2);
-      timer.unref();
+      const recheck = setInterval(runIfDue, HOUR_MS / 2);
+      first.unref();
+      recheck.unref();
+      timers = [first, recheck];
     },
     stop() {
-      if (timer) clearInterval(timer);
+      for (const timer of timers) clearTimeout(timer);
     },
+    releaseLock,
     status: () => ({ ...state })
   };
 }

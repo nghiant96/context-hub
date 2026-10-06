@@ -27,7 +27,7 @@ export interface ServerOptions {
  * each call reads the latest index — a sync can run while AI tools query.
  */
 export function createMcpServer(config: HubConfig, openDb: () => Db | null, options: ServerOptions = {}): McpServer {
-  const server = new McpServer({ name: "context-hub", version: "0.2.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "context-hub", version: "0.2.1" }, { instructions: INSTRUCTIONS });
   const missingIndex = options.missingIndex ?? (() => "Chưa có index. Chạy `npm run ctx -- sync` trong thư mục context-hub.");
 
   const run = (render: (db: Db) => string): ToolResult => {

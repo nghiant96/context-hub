@@ -16,4 +16,11 @@ await startMcpServer(config, {
   notice: () => noticeFor(sync.status())
 });
 log(`index: ${config.dbPath}; đồng bộ mỗi ${intervalHours} giờ`);
-sync.start();
+sync.start(15_000);
+
+// Claude Desktop stops a server by closing its input or signalling it; leave
+// no lock behind either way. A kill that skips this is covered by the lock's
+// dead-process check.
+process.on("exit", () => sync.releaseLock());
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal, () => process.exit(0));
+process.stdin.on("close", () => process.exit(0));

@@ -85,6 +85,13 @@ test("auto-sync runs once at a time, records success, and reports errors in answ
   assert.ok(getState(db, "auto:last"));
   db.close();
 
+  // A lock left by a process that was killed mid-sync does not block the next one.
+  fs.writeFileSync(path.join(dataDir, "sync.lock"), "999999");
+  const afterCrash = createAutoSync(config, { intervalHours: 3, log: () => {}, syncAll: async () => void (calls += 1) });
+  await afterCrash.runOnce();
+  assert.equal(calls, 2);
+  assert.ok(!fs.existsSync(path.join(dataDir, "sync.lock")));
+
   const failing = createAutoSync(config, {
     intervalHours: 3,
     log: () => {},
