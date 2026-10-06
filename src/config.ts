@@ -34,7 +34,7 @@ const DEFAULT_IGNORES = [
   "(^|/)(Pods|build|dist|node_modules)/"
 ];
 
-interface RawConfig {
+export interface RawConfig {
   dbPath?: string;
   jira?: { baseUrl?: string; projects?: string[] };
   confluence?: { spaces?: string[] };
@@ -56,15 +56,23 @@ export function loadConfig(configPath = process.env.CTX_CONFIG ?? "context-hub.c
   }
 
   const raw: RawConfig = fs.existsSync(absoluteConfig) ? JSON.parse(fs.readFileSync(absoluteConfig, "utf8")) : {};
-  const projects = raw.jira?.projects?.length ? raw.jira.projects : ["HOS"];
+  return buildConfig(raw, baseDir);
+}
 
+/**
+ * Settings plus credentials from `env`. Relative paths resolve against
+ * `baseDir`. The CLI reads them from a config file; the Claude Desktop
+ * extension from what the user typed when installing it.
+ */
+export function buildConfig(raw: RawConfig, baseDir: string, env: NodeJS.ProcessEnv = process.env): HubConfig {
+  const projects = raw.jira?.projects?.length ? raw.jira.projects : ["HOS"];
   return {
     dbPath: path.resolve(baseDir, raw.dbPath ?? "data/context.db"),
     jira: {
-      baseUrl: normalizeJiraBaseUrl(process.env.JIRA_BASE_URL || raw.jira?.baseUrl || ""),
+      baseUrl: normalizeJiraBaseUrl(env.JIRA_BASE_URL || raw.jira?.baseUrl || ""),
       projects,
-      email: process.env.JIRA_EMAIL || undefined,
-      apiToken: process.env.JIRA_API_TOKEN || undefined
+      email: env.JIRA_EMAIL || undefined,
+      apiToken: env.JIRA_API_TOKEN || undefined
     },
     confluence: { spaces: raw.confluence?.spaces ?? [] },
     repos: (raw.repos ?? []).map((repo) => ({ name: repo.name, path: path.resolve(baseDir, repo.path) })),

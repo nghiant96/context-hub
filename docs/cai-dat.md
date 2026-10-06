@@ -1,6 +1,37 @@
 # Hướng dẫn cài đặt context-hub từng bước
 
-Dành cho người không quen kỹ thuật (BA, QC, PO…), trên **Mac** hoặc **Windows**. Làm lần lượt từ trên xuống, mất khoảng 30–45 phút cho lần đầu. Cài xong, bạn hỏi Claude kiểu "spec quên mã PIN nói gì?", "HOS-1313 cần làm gì?" và Claude tự tra Jira, Confluence cho bạn.
+Dành cho người không quen kỹ thuật (BA, QC, PO…), trên **Mac** hoặc **Windows**. Cài xong, bạn hỏi Claude kiểu "spec quên mã PIN nói gì?", "HOS-1313 cần làm gì?" và Claude tự tra Jira, Confluence cho bạn.
+
+Có hai cách:
+
+| | Cách nhanh: extension Claude Desktop | Cách đầy đủ: cài bằng lệnh |
+|---|---|---|
+| Dùng trong | Khung chat của Claude Desktop | Claude Code (terminal, hoặc tab Code của Claude Desktop) và khung chat |
+| Cần cài thêm | Không | Git, Node.js, GitHub CLI |
+| Thời gian | Khoảng 5 phút | 30–45 phút |
+| Cập nhật dữ liệu | Tự động, vài giờ một lần | Tự chạy lệnh `sync` |
+
+Đa số BA, PO, QC chỉ cần **cách nhanh**. Dev dùng Claude Code thì làm **cách đầy đủ** từ mục [Trước khi bắt đầu](#trước-khi-bắt-đầu).
+
+## Cách nhanh: cài extension cho Claude Desktop
+
+1. **Lấy file `context-hub-<phiên bản>.mcpb`** từ người quản lý repo, hoặc từ mục **Releases** của repo `nghiant96/context-hub` trên GitHub.
+2. **Tạo API token Atlassian** theo [Bước 5](#bước-5-tạo-api-token-atlassian) bên dưới, rồi copy token ra.
+3. **Cài extension:** bấm đúp vào file `.mcpb`. Claude Desktop sẽ mở ra và hỏi có cài không, bấm **Install**. Nếu bấm đúp không có gì xảy ra: mở Claude Desktop, vào **Settings → Extensions**, rồi kéo thả file `.mcpb` vào cửa sổ đó.
+4. **Điền form cấu hình:**
+   - **Email Atlassian:** email bạn dùng đăng nhập Jira.
+   - **API token Atlassian:** dán token ở bước 2. Claude Desktop lưu token trong kho mật khẩu của máy.
+   - Các ô còn lại **để nguyên**.
+   - Dev và QC muốn dùng `test_scope` và lịch sử code thì chọn thêm thư mục repo ở ô **Thư mục code**.
+5. **Bật extension** (công tắc cạnh tên context-hub) và mở một cuộc trò chuyện mới. Lần đầu context-hub mất vài phút để tải dữ liệu. Trong lúc đó, câu trả lời sẽ ghi chú "đang tải dữ liệu lần đầu".
+
+Dữ liệu nằm trên máy bạn, ở thư mục `.context-hub` trong thư mục người dùng. Gỡ extension không xoá thư mục này. Muốn lên bản mới thì cài đè file `.mcpb` mới, dữ liệu vẫn giữ nguyên.
+
+Nếu câu trả lời báo lỗi email hoặc token, vào **Settings → Extensions → context-hub** để sửa, rồi tắt và bật lại extension.
+
+---
+
+Phần dưới đây là **cách đầy đủ**.
 
 ## Trước khi bắt đầu
 

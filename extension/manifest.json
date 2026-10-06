@@ -1,0 +1,86 @@
+{
+  "manifest_version": "0.3",
+  "name": "context-hub",
+  "display_name": "context-hub",
+  "version": "0.0.0",
+  "description": "Ngữ cảnh nghiệp vụ từ Jira, Confluence và lịch sử code: ticket, spec, thiết kế Figma và những gì vừa thay đổi.",
+  "long_description": "context-hub đọc Jira, Confluence và (nếu bạn chọn thư mục code) lịch sử git, nối mỗi ticket với tài liệu nhắc tới nó, thiết kế Figma và đoạn code đã hiện thực nó. Dữ liệu được lưu trên máy bạn ở thư mục .context-hub, tự đồng bộ vài giờ một lần. Số điện thoại, email và số CCCD được che trước khi lưu. Token Atlassian đại diện cho bạn: chỉ đọc được những gì bạn được xem.",
+  "author": { "name": "nghiant96" },
+  "repository": { "type": "git", "url": "https://github.com/nghiant96/context-hub" },
+  "keywords": ["jira", "confluence", "figma", "git", "healthos"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.mjs", "${user_config.repos}"],
+      "env": {
+        "JIRA_EMAIL": "${user_config.jira_email}",
+        "JIRA_API_TOKEN": "${user_config.jira_api_token}",
+        "JIRA_BASE_URL": "${user_config.jira_base_url}",
+        "CTX_JIRA_PROJECTS": "${user_config.jira_projects}",
+        "CTX_CONFLUENCE_SPACES": "${user_config.confluence_spaces}",
+        "CTX_SYNC_HOURS": "${user_config.sync_hours}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "ticket_context", "description": "Mô tả, AC, tài liệu, thiết kế Figma, code và lỗi cũ liên quan tới một ticket" },
+    { "name": "search", "description": "Tìm ticket, commit và tài liệu theo nghiệp vụ, hoặc theo link Figma" },
+    { "name": "changes", "description": "Ticket và trang vừa sửa, dòng thêm/bớt, spec sửa sau khi đã code" },
+    { "name": "confluence_page", "description": "Đọc một trang Confluence theo từng phần" },
+    { "name": "test_scope", "description": "Ticket cần regression cho một nhánh (cần chọn thư mục code)" },
+    { "name": "file_history", "description": "Những ticket đã định hình một file hoặc thư mục" }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": { "node": ">=22.13.0" }
+  },
+  "user_config": {
+    "jira_email": {
+      "type": "string",
+      "title": "Email Atlassian",
+      "description": "Email bạn dùng để đăng nhập Jira và Confluence.",
+      "required": true
+    },
+    "jira_api_token": {
+      "type": "string",
+      "title": "API token Atlassian",
+      "description": "Tạo tại https://id.atlassian.com/manage-profile/security/api-tokens, chọn \"Create API token\" (không chọn bản \"with scopes\").",
+      "sensitive": true,
+      "required": true
+    },
+    "jira_base_url": {
+      "type": "string",
+      "title": "Địa chỉ Atlassian",
+      "description": "Địa chỉ trang Jira của công ty.",
+      "default": "https://onemount.atlassian.net"
+    },
+    "jira_projects": {
+      "type": "string",
+      "title": "Project Jira",
+      "description": "Mã project, nhiều project thì cách nhau bằng dấu phẩy.",
+      "default": "HOS"
+    },
+    "confluence_spaces": {
+      "type": "string",
+      "title": "Space Confluence",
+      "description": "Key của space (phần sau /wiki/spaces/ trong link), cách nhau bằng dấu phẩy.",
+      "default": "Healthcare"
+    },
+    "repos": {
+      "type": "directory",
+      "title": "Thư mục code (tuỳ chọn, cho dev và QC)",
+      "description": "Các repo git trên máy bạn, để biết file nào do ticket nào sửa và chọn phạm vi regression. BA và PO bỏ trống.",
+      "multiple": true
+    },
+    "sync_hours": {
+      "type": "number",
+      "title": "Đồng bộ mỗi (giờ)",
+      "description": "Bao lâu tự tải dữ liệu mới một lần.",
+      "default": 3,
+      "min": 1,
+      "max": 24
+    }
+  }
+}

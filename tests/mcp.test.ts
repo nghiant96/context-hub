@@ -4,7 +4,7 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { openDb, openDbReadOnly } from "../src/db.ts";
-import { createMcpServer } from "../src/mcp.ts";
+import { createMcpServer } from "../src/mcp-server.ts";
 import { syncGitRepo } from "../src/sources/git.ts";
 import { buildFixtureRepo, fixtureConfig, tempDir } from "./helpers.ts";
 

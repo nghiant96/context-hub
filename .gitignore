@@ -1,4 +1,6 @@
 node_modules/
+# Built extension bundles (npm run build:extension).
+dist/
 # The index holds company data (Jira content, commit history). Never commit it.
 data/
 .env

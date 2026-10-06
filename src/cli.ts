@@ -6,7 +6,7 @@ import { loadConfig, type HubConfig } from "./config.ts";
 import { openDb } from "./db.ts";
 import { parseFigmaLinks } from "./figma.ts";
 import { formatChanges, formatFigmaLookup, formatFileHistory, formatPage, formatSearch, formatStats, formatTestScope, formatTicketContext } from "./format.ts";
-import { startMcpServer } from "./mcp.ts";
+import { startMcpServer } from "./mcp-server.ts";
 import { changes, defaultSince, figmaLookup, fileHistory, pageContent, search, stats, testScope, ticketContext } from "./queries.ts";
 import { ConfluenceClient, syncConfluence } from "./sources/confluence.ts";
 import { syncGitRepo } from "./sources/git.ts";

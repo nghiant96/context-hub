@@ -44,6 +44,18 @@ Token đại diện cho bạn: index chỉ chứa những ticket và trang bạn
 
 Số điện thoại, email, số CCCD/CMND trong mô tả, bình luận và trang Confluence được **che trước khi lưu**, vì đây là dữ liệu y tế và nội dung sẽ được gửi cho AI.
 
+## Extension cho Claude Desktop
+
+Người không dùng terminal có thể cài một file `.mcpb`, xem [hướng dẫn](docs/cai-dat.md#cách-nhanh-cài-extension-cho-claude-desktop). Extension chạy bằng Node có sẵn trong Claude Desktop, nhận email và token Atlassian qua form cài đặt, lưu index ở `~/.context-hub/` và tự đồng bộ vài giờ một lần.
+
+Build file cài:
+
+```bash
+npm run build:extension   # → dist/context-hub-<version>.mcpb
+```
+
+Lệnh này gom `src/extension-main.ts` cùng các thư viện thành một file `server/index.mjs` (không kèm `node_modules`), ghi `extension/manifest.json` với version lấy từ `package.json`, kiểm tra manifest rồi đóng gói. Muốn phát hành bản mới thì tăng `version` trong `package.json` trước khi build.
+
 ## Gắn vào Claude Code
 
 ```bash
