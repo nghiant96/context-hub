@@ -2,20 +2,24 @@
 
 Dành cho người không quen kỹ thuật (BA, QC, PO…), trên **Mac** hoặc **Windows**. Cài xong, bạn hỏi Claude kiểu "spec quên mã PIN nói gì?", "HOS-1313 cần làm gì?" và Claude tự tra Jira, Confluence cho bạn.
 
-Có hai cách:
+Có ba cách, chọn theo công cụ bạn dùng:
 
-| | Cách nhanh: extension Claude Desktop | Cách đầy đủ: cài bằng lệnh |
-|---|---|---|
-| Dùng trong | Khung chat của Claude Desktop | Claude Code (terminal, hoặc tab Code của Claude Desktop) và khung chat |
-| Cần cài thêm | Không | Git, Node.js, GitHub CLI |
-| Thời gian | Khoảng 5 phút | 30–45 phút |
-| Cập nhật dữ liệu | Tự động, vài giờ một lần | Tự chạy lệnh `sync` |
+| | 1. Extension Claude Desktop | 2. Claude Code, không cần repo | 3. Cài đầy đủ từ repo |
+|---|---|---|---|
+| Dùng trong | Khung chat Claude Desktop (Claude Code dùng chung được) | Claude Code (terminal) | Claude Code và khung chat |
+| Cần cài thêm | Không | Node.js | Git, Node.js, GitHub CLI |
+| Thời gian | Khoảng 5 phút | Khoảng 10 phút | 30–45 phút |
+| Cập nhật dữ liệu | Tự động, vài giờ một lần | Tự động khi Claude Code đang chạy | Tự chạy lệnh `sync` |
 
-Đa số BA, PO, QC chỉ cần **cách nhanh**. Dev dùng Claude Code thì làm **cách đầy đủ** từ mục [Trước khi bắt đầu](#trước-khi-bắt-đầu).
+- BA, PO, QC dùng Claude Desktop: **cách 1**.
+- Dùng Claude Code trên Mac hoặc Windows, không sửa code context-hub: **cách 2**.
+- Sửa code context-hub: **cách 3**, từ mục [Trước khi bắt đầu](#trước-khi-bắt-đầu).
 
-## Cách nhanh: cài extension cho Claude Desktop
+Cách 1 và cách 2 dùng file `context-hub-<phiên bản>.mcpb`, tải ở trang **Releases** của repo: https://github.com/nghiant96/context-hub/releases/latest (cần tài khoản GitHub đã được mời vào repo). Chưa có quyền thì xin file từ người quản lý repo.
 
-1. **Lấy file `context-hub-<phiên bản>.mcpb`** từ người quản lý repo, hoặc từ mục **Releases** của repo `nghiant96/context-hub` trên GitHub.
+## Cách 1: cài extension cho Claude Desktop
+
+1. **Tải file `context-hub-<phiên bản>.mcpb`** ở trang Releases (link ở trên).
 2. **Tạo API token Atlassian** theo [Bước 5](#bước-5-tạo-api-token-atlassian) bên dưới, rồi copy token ra.
 3. **Cài extension:** bấm đúp vào file `.mcpb`. Claude Desktop sẽ mở ra và hỏi có cài không, bấm **Install**. Nếu bấm đúp không có gì xảy ra: mở Claude Desktop, vào **Settings → Extensions**, rồi kéo thả file `.mcpb` vào cửa sổ đó.
 4. **Điền form cấu hình:**
@@ -29,9 +33,93 @@ Dữ liệu nằm trên máy bạn, ở thư mục `.context-hub` trong thư m�
 
 Nếu câu trả lời báo lỗi email hoặc token, vào **Settings → Extensions → context-hub** để sửa, rồi tắt và bật lại extension.
 
+Muốn dùng thêm trong Claude Code, xem mục [Claude Code dùng chung dữ liệu với extension](#claude-code-dùng-chung-dữ-liệu-với-extension) ở cách 2.
+
+## Cách 2: Claude Code, không cần repo
+
+Chạy server có sẵn trong file `.mcpb` trực tiếp từ Claude Code. Server tự tải Jira và Confluence khi Claude Code đang mở. Không cần Git, GitHub CLI hay `npm install`. Trên Windows dùng **Command Prompt**, xem [Cách dùng cửa sổ lệnh](#cách-dùng-cửa-sổ-lệnh-đọc-trước-1-phút).
+
+1. **Cài Node.js** theo [Bước 2](#bước-2-cài-nodejs-bản-24-trở-lên).
+2. **Tải file `.mcpb`** ở trang Releases về thư mục Downloads.
+3. **Giải nén server.** File `.mcpb` thực chất là file zip, và Windows 10/11 cũng có sẵn lệnh `tar`. Đổi `0.2.2` thành đúng số phiên bản của file bạn tải.
+
+   Windows:
+
+```bat
+mkdir "%USERPROFILE%\context-hub-mcp"
+```
+
+```bat
+tar -xf "%USERPROFILE%\Downloads\context-hub-0.2.2.mcpb" -C "%USERPROFILE%\context-hub-mcp"
+```
+
+   Mac:
+
+```bash
+mkdir -p "$HOME/context-hub-mcp"
+```
+
+```bash
+tar -xf "$HOME/Downloads/context-hub-0.2.2.mcpb" -C "$HOME/context-hub-mcp"
+```
+
+4. **Tạo API token Atlassian** theo [Bước 5](#bước-5-tạo-api-token-atlassian).
+5. **Gắn vào Claude Code.** Thay `ten@congty.com` bằng email của bạn và `<token>` bằng token vừa tạo.
+
+   Windows:
+
+```bat
+claude mcp add context-hub -s user -e JIRA_BASE_URL=https://onemount.atlassian.net -e JIRA_EMAIL=ten@congty.com -e JIRA_API_TOKEN=<token> -e CTX_CONFLUENCE_SPACES=Healthcare -- node "%USERPROFILE%\context-hub-mcp\server\index.mjs"
+```
+
+   Mac:
+
+```bash
+claude mcp add context-hub -s user -e JIRA_BASE_URL=https://onemount.atlassian.net -e JIRA_EMAIL=ten@congty.com -e JIRA_API_TOKEN=<token> -e CTX_CONFLUENCE_SPACES=Healthcare -- node "$HOME/context-hub-mcp/server/index.mjs"
+```
+
+   Dev và QC muốn dùng `test_scope` và lịch sử code thì thêm đường dẫn các repo vào **cuối** lệnh, mỗi repo trong một cặp dấu nháy, ví dụ `"D:\code\healthos"`. Máy cần có Git ([Bước 1](#bước-1-cài-git)).
+
+6. **Kiểm tra:**
+
+```bash
+claude mcp list
+```
+
+   Thấy dòng `context-hub: node … - ✔ Connected` là xong. Mở một phiên Claude Code mới. Khoảng 15 giây sau, context-hub tự tải dữ liệu lần đầu, thường dưới một phút. Từ đó nó tự cập nhật mỗi 3 giờ khi Claude Code đang chạy. Dữ liệu nằm ở thư mục `.context-hub` trong thư mục người dùng.
+
+**Lưu ý:**
+- **Token lưu dạng chữ thường** trong file `.claude.json` ở thư mục người dùng. Lệnh ở bước 5 cũng nằm lại trong lịch sử lệnh của cửa sổ. Không chia sẻ file này. Nếu lỡ lộ token, vào trang API token bấm **Revoke**, rồi làm lại bước 5 với token mới.
+- **Đổi token** (khi hết hạn hoặc bị lộ): chạy `claude mcp remove context-hub -s user`, rồi chạy lại lệnh ở bước 5.
+- **Lên bản mới:** tải file `.mcpb` mới, chạy lại lệnh `tar` ở bước 3 (ghi đè bản cũ), rồi mở phiên Claude Code mới. Cấu hình và dữ liệu giữ nguyên.
+
+### Claude Code dùng chung dữ liệu với extension
+
+Đã cài extension Claude Desktop (cách 1)? Cho Claude Code chạy server của extension, **không truyền email và token**. Claude Code khi đó chỉ đọc dữ liệu, còn extension trong Claude Desktop lo đồng bộ. Không phải lưu token lần thứ hai.
+
+Mac:
+
+```bash
+claude mcp add context-hub -s user -- node "$HOME/Library/Application Support/Claude/Claude Extensions/local.mcpb.nghiant96.context-hub/server/index.mjs"
+```
+
+Windows: Claude Desktop có thể lưu extension trong thư mục ảo hoá của gói cài. Tìm đường dẫn trước:
+
+```bat
+dir /s /b "%APPDATA%\Claude\Claude Extensions\index.mjs" "%LOCALAPPDATA%\Packages\Claude*\index.mjs"
+```
+
+Rồi dùng đường dẫn có chữ `nghiant96.context-hub` mà lệnh trên in ra:
+
+```bat
+claude mcp add context-hub -s user -- node "<đường dẫn index.mjs vừa tìm được>"
+```
+
+Dev và QC thêm đường dẫn repo vào cuối lệnh như ở bước 5, dùng đúng các thư mục đã chọn trong extension. Nếu Claude Desktop lâu không được mở, câu trả lời sẽ ghi chú ngày dữ liệu cập nhật lần cuối.
+
 ---
 
-Phần dưới đây là **cách đầy đủ**.
+Phần dưới đây là **cách 3: cài đầy đủ từ repo**.
 
 ## Trước khi bắt đầu
 
@@ -359,6 +447,8 @@ npm run ctx -- sync git
 | `HTTP 403`, hoặc thiếu ticket/trang mà người khác vẫn thấy | Tài khoản của bạn chưa có quyền xem project hoặc space đó trên Jira/Confluence. |
 | Claude không thấy context-hub | Thoát hẳn Claude rồi mở lại. Kiểm tra file cấu hình có đủ dấu ngoặc và dấu phẩy không. Tab **Developer** trong Settings của Claude Desktop có hiện lỗi của từng server. |
 | Claude báo `Chưa có index` | Bạn chưa chạy bước 7. |
+| `'tar' is not recognized` (Windows cũ) | Đổi đuôi file `.mcpb` thành `.zip`, chuột phải chọn **Extract All…** và giải nén vào thư mục `context-hub-mcp` trong thư mục người dùng. |
+| Cách 2: Claude báo `Chưa có dữ liệu ở …` | Lệnh ở bước 5 thiếu email hoặc token, nên server chỉ đọc. Chạy `claude mcp remove context-hub -s user` rồi làm lại bước 5. |
 
 ## Lưu ý bảo mật
 
