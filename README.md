@@ -18,6 +18,8 @@ Mỗi phần trong câu trả lời đều có giới hạn độ dài, trang Co
 
 ## Cài đặt
 
+> Không quen dùng terminal? Làm theo **[hướng dẫn cài đặt từng bước cho Mac và Windows](docs/cai-dat.md)**, có cả phần cài Git, Node.js và gắn vào Claude.
+
 Cần Node.js 24 trở lên (chạy thẳng TypeScript, SQLite có sẵn trong Node).
 
 ```bash
