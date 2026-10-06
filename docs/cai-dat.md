@@ -74,7 +74,7 @@ Trên Windows dùng **Command Prompt**, xem [Cách dùng cửa sổ lệnh](#cá
 
 1. **Cài Node.js** theo [Bước 2](#bước-2-cài-nodejs-bản-24-trở-lên).
 2. **Tải file `.mcpb`** ở trang Releases về thư mục Downloads.
-3. **Giải nén server.** File `.mcpb` thực chất là file zip, và Windows 10/11 cũng có sẵn lệnh `tar`. Đổi `0.2.2` thành đúng số phiên bản của file bạn tải.
+3. **Giải nén server.** File `.mcpb` thực chất là file zip, và Windows 10/11 cũng có sẵn lệnh `tar`. Đổi `0.2.3` thành đúng số phiên bản của file bạn tải.
 
    Windows:
 
@@ -83,7 +83,7 @@ mkdir "%USERPROFILE%\context-hub-mcp"
 ```
 
 ```bat
-tar -xf "%USERPROFILE%\Downloads\context-hub-0.2.2.mcpb" -C "%USERPROFILE%\context-hub-mcp"
+tar -xf "%USERPROFILE%\Downloads\context-hub-0.2.3.mcpb" -C "%USERPROFILE%\context-hub-mcp"
 ```
 
    Mac:
@@ -93,7 +93,7 @@ mkdir -p "$HOME/context-hub-mcp"
 ```
 
 ```bash
-tar -xf "$HOME/Downloads/context-hub-0.2.2.mcpb" -C "$HOME/context-hub-mcp"
+tar -xf "$HOME/Downloads/context-hub-0.2.3.mcpb" -C "$HOME/context-hub-mcp"
 ```
 
 4. **Tạo API token Atlassian** theo [Bước 5](#bước-5-tạo-api-token-atlassian).
