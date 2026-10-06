@@ -1,7 +1,9 @@
 import { isIgnoredPath, type HubConfig } from "./config.ts";
 import { hasTable, type Db } from "./db.ts";
+import type { FigmaLink } from "./figma.ts";
 import { changedFiles, isFixSubject, ticketsInRange } from "./sources/git.ts";
-import { foldVietnamese, searchTerms, splitText, toFtsQuery } from "./text.ts";
+import { issueText } from "./sources/jira.ts";
+import { foldVietnamese, lineDiff, searchTerms, splitText, toFtsQuery } from "./text.ts";
 
 export interface IssueRow {
   key: string;
@@ -12,6 +14,7 @@ export interface IssueRow {
   description: string | null;
   extra_text: string | null;
   parent_key: string | null;
+  created: string | null;
   updated: string | null;
   url: string | null;
 }
@@ -65,12 +68,24 @@ export interface TicketContext {
   relatedTickets: RelatedTicket[];
   priorFixes: FixCommit[];
   similar: TicketRef[];
-  /** Pages naming the ticket, or its parent (`via`). */
-  docs: Array<PageRef & { via: string }>;
+  /**
+   * Pages naming the ticket, or its parent (`via`). `editedAfterCode`: the
+   * page naming the ticket changed after its last commit, so the code may
+   * no longer match it.
+   */
+  docs: Array<PageRef & { via: string; editedAfterCode: boolean }>;
   /** Pages whose text resembles the ticket's summary but do not name it. */
   similarDocs: PageRef[];
   /** Sprint reports and go-live checklists that list the ticket among many. */
   listings: PageRef[];
+  /** Figma links from the ticket, then its parent, then its pages. */
+  designs: DesignRef[];
+}
+
+export interface DesignRef extends FigmaLink {
+  /** The ticket key or page title the link was found in. */
+  from: string;
+  kind: "ticket" | "parent" | "page";
 }
 
 /**
@@ -81,6 +96,42 @@ export interface TicketContext {
 const LISTING_MIN_TICKETS = 11;
 
 const fileId = (repo: string, path: string) => `${repo}:${path}`;
+
+/** Whether `later` is strictly after `earlier`; timestamps from Jira, Confluence and git carry different offsets. */
+const isAfter = (later: string | null | undefined, earlier: string | null | undefined) =>
+  Boolean(later && earlier) && Date.parse(later!) > Date.parse(earlier!);
+
+/** The date of the newest commit naming each ticket. */
+function lastCommitOf(db: Db, keys: string[]): Map<string, string> {
+  if (keys.length === 0) return new Map();
+  const rows = db
+    .prepare(
+      `SELECT ci.issue_key AS key, MAX(c.date) AS last FROM commit_issues ci
+       JOIN json_each(?) j ON j.value = ci.issue_key
+       JOIN commits c ON c.repo = ci.repo AND c.sha = ci.sha
+       WHERE c.is_merge = 0
+       GROUP BY ci.issue_key`
+    )
+    .all(JSON.stringify(keys)) as Array<{ key: string; last: string }>;
+  return new Map(rows.map((row) => [row.key, row.last]));
+}
+
+/** Figma links of the given tickets and pages, in that order, each frame once. */
+function designsOf(db: Db, sources: Array<{ source: "issue" | "page"; id: string; from: string; kind: DesignRef["kind"] }>, limit: number): DesignRef[] {
+  if (!hasTable(db, "figma_links")) return [];
+  const statement = db.prepare("SELECT file_key, node_id, file_name, url FROM figma_links WHERE source = ? AND source_id = ? ORDER BY rowid");
+  const seen = new Set<string>();
+  const designs: DesignRef[] = [];
+  for (const { source, id, from, kind } of sources) {
+    for (const row of statement.all(source, id) as Array<{ file_key: string; node_id: string; file_name: string | null; url: string }>) {
+      const frame = `${row.file_key}#${row.node_id}`;
+      if (seen.has(frame)) continue;
+      seen.add(frame);
+      designs.push({ fileKey: row.file_key, nodeId: row.node_id, fileName: row.file_name ?? "", url: row.url, from, kind });
+    }
+  }
+  return designs.slice(0, limit);
+}
 
 export function getIssue(db: Db, key: string): IssueRow | null {
   return (db.prepare("SELECT * FROM issues WHERE key = ?").get(key) as IssueRow | undefined) ?? null;
@@ -227,10 +278,11 @@ export function ticketContext(db: Db, config: Pick<HubConfig, "ignorePaths">, ke
   const relatedIssues = issuesByKey(db, relatedRows.map((row) => row.key));
 
   const naming = pagesNaming(db, [key, ...(issue?.parent_key ? [issue.parent_key] : [])], 40);
+  const lastCommit = commitRows[0]?.date ?? null;
   const docs = naming
     .filter((page) => page.breadth < LISTING_MIN_TICKETS)
     .slice(0, 6)
-    .map(({ breadth, ...page }) => page);
+    .map(({ breadth, ...page }) => ({ ...page, editedAfterCode: page.via === key && isAfter(page.updated, lastCommit) }));
   // A listing matters when it names this ticket (it is in that sprint or
   // release); one naming only the parent says nothing about this ticket.
   const listings = naming
@@ -276,7 +328,16 @@ export function ticketContext(db: Db, config: Pick<HubConfig, "ignorePaths">, ke
     similar,
     docs,
     similarDocs,
-    listings
+    listings,
+    designs: designsOf(
+      db,
+      [
+        { source: "issue", id: key, from: key, kind: "ticket" },
+        ...(issue?.parent_key ? [{ source: "issue" as const, id: issue.parent_key, from: issue.parent_key, kind: "parent" as const }] : []),
+        ...docs.map((doc) => ({ source: "page" as const, id: String(doc.id), from: doc.title, kind: "page" as const }))
+      ],
+      6
+    )
   };
 }
 
@@ -491,6 +552,248 @@ export function pageContent(db: Db, ref: string, part = 1): PageContent | null {
     parts: parts.length,
     text: parts[index - 1]!,
     issues: index === 1 ? keys.map((key) => ({ key, issue: issues.get(key) ?? null })) : []
+  };
+}
+
+type LineDiff = ReturnType<typeof lineDiff>;
+
+export interface ChangedIssue {
+  issue: IssueRow;
+  /** Created on or after the date asked about. */
+  isNew: boolean;
+  /** The status before the latest change, when that change moved it. */
+  statusBefore: string | null;
+  /** When the version the diff compares against was last edited. */
+  versionDate: string | null;
+  diff: LineDiff | null;
+}
+
+export interface ChangedPage extends PageRef {
+  versionDate: string | null;
+  diff: LineDiff | null;
+  /** Tickets with code older than this edit: the code may not match the page any more. */
+  drift: Array<{ key: string; lastCommit: string }>;
+}
+
+export interface Changes {
+  since: string;
+  key: string | null;
+  /** Tickets under `key` (children and their children). */
+  scopeSize: number;
+  issues: ChangedIssue[];
+  totalIssues: number;
+  pages: ChangedPage[];
+  totalPages: number;
+  /** Every changed page edited after its tickets' code, not only the pages listed. */
+  drifting: Array<PageRef & { drift: ChangedPage["drift"] }>;
+}
+
+const CHANGED_ISSUES = 15;
+const CHANGED_PAGES = 10;
+/** Line diffs cost the most output; only the newest changes carry one. */
+const DIFFED = 6;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A week before `now`, as YYYY-MM-DD. */
+export function defaultSince(now = new Date()): string {
+  return new Date(now.getTime() - 7 * DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * What changed in Jira and Confluence since a date, optionally only under one
+ * epic or story: tickets and pages edited, the lines their latest edit added
+ * or removed (when sync kept the version before it), and pages edited after
+ * the code for the tickets they name was last committed.
+ */
+export function changes(db: Db, options: { since: string; key?: string | null }): Changes {
+  const { since } = options;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw new Error(`Ngày "${since}" không đúng dạng YYYY-MM-DD.`);
+  const key = options.key ?? null;
+  const scope = key
+    ? (
+        db
+          .prepare(
+            `WITH RECURSIVE tree(key, depth) AS (
+               SELECT ?, 0 UNION SELECT i.key, t.depth + 1 FROM issues i JOIN tree t ON i.parent_key = t.key WHERE t.depth < 2
+             )
+             SELECT key FROM tree`
+          )
+          .all(key) as Array<{ key: string }>
+      ).map((row) => row.key)
+    : null;
+  const scopeJson = scope ? JSON.stringify(scope) : null;
+  const versionAfter = (table: "issue_versions" | "page_versions", column: string, id: string | number) =>
+    hasTable(db, table)
+      ? ((db.prepare(`SELECT * FROM ${table} WHERE ${column} = ? AND substr(changed, 1, 10) >= ?`).get(id, since) as Record<string, string | null> | undefined) ?? null)
+      : null;
+
+  const issueRows = db
+    .prepare(
+      `SELECT * FROM issues
+       WHERE substr(updated, 1, 10) >= ? AND (? IS NULL OR key IN (SELECT value FROM json_each(?)))
+       ORDER BY updated DESC`
+    )
+    .all(since, scopeJson, scopeJson) as unknown as IssueRow[];
+  const issues = issueRows.slice(0, CHANGED_ISSUES).map((issue, index): ChangedIssue => {
+    const version = index < DIFFED ? versionAfter("issue_versions", "key", issue.key) : null;
+    const texts = version ? (db.prepare("SELECT field, text FROM issue_texts WHERE key = ? ORDER BY position").all(issue.key) as Array<{ field: string; text: string }>) : [];
+    return {
+      issue,
+      isNew: (issue.created ?? "").slice(0, 10) >= since,
+      statusBefore: version && version.status !== issue.status ? version.status ?? null : null,
+      versionDate: version?.updated ?? null,
+      diff: version ? lineDiff(version.text ?? "", issueText(issue.description, texts)) : null
+    };
+  });
+
+  const pageRows = hasTable(db, "pages")
+    ? (db
+        .prepare(
+          `SELECT p.id, p.title, p.updated, p.url, p.body, (SELECT COUNT(*) FROM page_issues x WHERE x.page_id = p.id) AS breadth
+           FROM pages p
+           WHERE substr(p.updated, 1, 10) >= ?
+             AND (? IS NULL OR p.id IN (SELECT pi.page_id FROM page_issues pi JOIN json_each(?) j ON j.value = pi.issue_key))
+           ORDER BY p.updated DESC`
+        )
+        .all(since, scopeJson, scopeJson) as unknown as Array<PageRef & { body: string | null; breadth: number }>)
+    : [];
+  // Within an epic, a sprint report that merely lists its stories is noise.
+  const relevantPages = scope ? pageRows.filter((page) => page.breadth < LISTING_MIN_TICKETS) : pageRows;
+  const inScope = scope ? new Set(scope) : null;
+  const driftOf = (page: (typeof relevantPages)[number]): ChangedPage["drift"] => {
+    // A listing names too many tickets for its edits to say anything about their code.
+    if (page.breadth >= LISTING_MIN_TICKETS) return [];
+    const named = (db.prepare("SELECT issue_key FROM page_issues WHERE page_id = ? ORDER BY issue_key").all(page.id) as Array<{ issue_key: string }>).map((row) => row.issue_key).filter((ticket) => !inScope || inScope.has(ticket));
+    const lastCommits = lastCommitOf(db, named);
+    return named.filter((ticket) => isAfter(page.updated, lastCommits.get(ticket))).map((ticket) => ({ key: ticket, lastCommit: lastCommits.get(ticket)! }));
+  };
+  const drifts = new Map(relevantPages.map((page) => [page.id, driftOf(page)]));
+  const pages = relevantPages.slice(0, CHANGED_PAGES).map((page, index): ChangedPage => {
+    const version = index < DIFFED ? versionAfter("page_versions", "page_id", page.id) : null;
+    return {
+      ...pageRef(page),
+      versionDate: version?.updated ?? null,
+      diff: version ? lineDiff(version.body ?? "", page.body ?? "") : null,
+      drift: drifts.get(page.id)!
+    };
+  });
+
+  return {
+    since,
+    key,
+    scopeSize: scope ? scope.length - 1 : 0,
+    issues,
+    totalIssues: issueRows.length,
+    pages,
+    totalPages: relevantPages.length,
+    drifting: relevantPages
+      .filter((page) => drifts.get(page.id)!.length)
+      .slice(0, CHANGED_PAGES)
+      .map((page) => ({ ...pageRef(page), drift: drifts.get(page.id)! }))
+  };
+}
+
+export interface FigmaLookup {
+  link: FigmaLink;
+  fileName: string;
+  /** Tickets linking this design, then tickets named by pages that link it. */
+  tickets: TicketRef[];
+  pages: PageRef[];
+  /** Screen files the tickets' commits touched: where the design lives in code. */
+  screens: Array<{ repo: string; path: string; keys: string[] }>;
+  /** Other frames of the same file that tickets or pages link. */
+  otherNodes: Array<{ nodeId: string; url: string; keys: string[]; pages: string[] }>;
+}
+
+/**
+ * A screen component: a file directly in a screens/ folder, or a component
+ * named *Screen. Hooks named after their screen (useLoginScreen.ts) and
+ * tests are not screens.
+ */
+export function isScreenFile(filePath: string): boolean {
+  const parts = filePath.split("/");
+  const name = parts.at(-1) ?? "";
+  if (/^use[A-Z]/.test(name) || /\.(?:test|spec)\./.test(name)) return false;
+  return /^screens?$/i.test(parts.at(-2) ?? "") || /Screen\.(?:tsx|jsx|swift|kt|dart)$/.test(name);
+}
+
+/**
+ * From a Figma link to what was built from it: the tickets and pages linking
+ * that frame (or any frame of the file, for a file link) and, through the
+ * tickets' commits, the screen files that implement it.
+ */
+export function figmaLookup(db: Db, config: Pick<HubConfig, "ignorePaths">, link: FigmaLink): FigmaLookup {
+  const rows = hasTable(db, "figma_links")
+    ? (db.prepare("SELECT source, source_id, node_id, file_name, url FROM figma_links WHERE file_key = ? ORDER BY rowid").all(link.fileKey) as Array<{
+        source: "issue" | "page";
+        source_id: string;
+        node_id: string;
+        file_name: string | null;
+        url: string;
+      }>)
+    : [];
+  const isTarget = (row: { node_id: string }) => !link.nodeId || row.node_id === link.nodeId;
+  const target = rows.filter(isTarget);
+
+  const pageIds = [...new Set(target.filter((row) => row.source === "page").map((row) => Number(row.source_id)))];
+  const pages = pageIds.length
+    ? (db.prepare("SELECT p.id, p.title, p.updated, p.url FROM pages p JOIN json_each(?) j ON j.value = p.id ORDER BY p.updated DESC").all(JSON.stringify(pageIds)) as unknown as PageRef[])
+    : [];
+  const namedByPages = pageIds.length
+    ? (
+        db
+          .prepare(
+            `SELECT DISTINCT pi.issue_key AS key FROM page_issues pi JOIN json_each(?) j ON j.value = pi.page_id
+             WHERE (SELECT COUNT(*) FROM page_issues x WHERE x.page_id = pi.page_id) < ?
+             ORDER BY pi.issue_key`
+          )
+          .all(JSON.stringify(pageIds), LISTING_MIN_TICKETS) as Array<{ key: string }>
+      ).map((row) => row.key)
+    : [];
+  const keys = [...new Set([...target.filter((row) => row.source === "issue").map((row) => row.source_id), ...namedByPages])];
+  const issues = issuesByKey(db, keys);
+
+  const touched = keys.length
+    ? (db
+        .prepare(
+          `SELECT cf.repo, cf.path, GROUP_CONCAT(DISTINCT ci.issue_key) AS keys, COUNT(DISTINCT ci.issue_key) AS tickets, MAX(c.date) AS last
+           FROM commit_issues ci
+           JOIN json_each(?) j ON j.value = ci.issue_key
+           JOIN commit_files cf ON cf.repo = ci.repo AND cf.sha = ci.sha
+           JOIN commits c ON c.repo = cf.repo AND c.sha = cf.sha
+           GROUP BY cf.repo, cf.path
+           ORDER BY tickets DESC, last DESC`
+        )
+        .all(JSON.stringify(keys)) as Array<{ repo: string; path: string; keys: string }>)
+    : [];
+  const screens = touched
+    .filter((file) => isScreenFile(file.path) && !isIgnoredPath(config, file.path))
+    .slice(0, 8)
+    .map((file) => ({ repo: file.repo, path: file.path, keys: file.keys.split(",").sort() }));
+
+  const others = new Map<string, FigmaLookup["otherNodes"][number]>();
+  for (const row of rows.filter((candidate) => !isTarget(candidate))) {
+    const node = others.get(row.node_id) ?? { nodeId: row.node_id, url: row.url, keys: [], pages: [] };
+    if (row.source === "issue") node.keys.push(row.source_id);
+    else node.pages.push(row.source_id);
+    others.set(row.node_id, node);
+  }
+  const otherNodes = [...others.values()].slice(0, 8);
+  const titles = new Map(
+    (hasTable(db, "pages") && otherNodes.some((node) => node.pages.length)
+      ? (db.prepare("SELECT p.id, p.title FROM pages p JOIN json_each(?) j ON j.value = p.id").all(JSON.stringify(otherNodes.flatMap((node) => node.pages.map(Number)))) as Array<{ id: number; title: string }>)
+      : []
+    ).map((row) => [String(row.id), row.title])
+  );
+  for (const node of otherNodes) node.pages = node.pages.map((id) => titles.get(id) ?? id);
+
+  return {
+    link,
+    fileName: link.fileName || rows.find((row) => row.file_name)?.file_name || "",
+    tickets: keys.map((ticket) => ({ key: ticket, issue: issues.get(ticket) ?? null })),
+    pages,
+    screens,
+    otherNodes
   };
 }
 

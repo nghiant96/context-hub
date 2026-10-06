@@ -1,5 +1,6 @@
 import { foldVietnamese, redact } from "../text.ts";
 import { getState, inTransaction, setState, type Db } from "../db.ts";
+import { parseFigmaLinks, saveFigmaLinks, type FigmaLink } from "../figma.ts";
 import { adfToText, AtlassianClient } from "./atlassian.ts";
 import { extractIssueKeys } from "./git.ts";
 
@@ -57,6 +58,7 @@ export interface PageRecord {
   updated: string | null;
   url: string;
   issueKeys: string[];
+  figmaLinks: FigmaLink[];
 }
 
 /**
@@ -77,11 +79,18 @@ export function toPageRecord(page: ConfluencePage, space: string, baseUrl: strin
     url: `${baseUrl}/wiki${page._links?.webui?.replace(/(\/pages\/\d+)\/[^/]*$/, "$1") ?? `/pages/viewpage.action?pageId=${page.id}`}`,
     // Tickets appear as links (/browse/HOS-12) and Jira macros as often as in
     // text, so keys are read from the whole document, not the rendered text.
-    issueKeys: extractIssueKeys(`${page.title}\n${adf}`, projectKeys)
+    issueKeys: extractIssueKeys(`${page.title}\n${adf}`, projectKeys),
+    figmaLinks: parseFigmaLinks(adf)
   };
 }
 
 export function upsertPage(db: Db, page: PageRecord): void {
+  // Keep the text the page had before this edit; a refetch of an unchanged
+  // page (syncs overlap by a day) must not overwrite it.
+  const before = db.prepare("SELECT body, updated FROM pages WHERE id = ?").get(page.id) as { body: string | null; updated: string | null } | undefined;
+  if (before && (before.body ?? "") !== page.body) {
+    db.prepare("INSERT OR REPLACE INTO page_versions(page_id, updated, body, changed) VALUES (?, ?, ?, ?)").run(page.id, before.updated, before.body, page.updated);
+  }
   db.prepare(
     `INSERT INTO pages(id, space, title, body, parent_id, updated, url) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET space = excluded.space, title = excluded.title, body = excluded.body,
@@ -92,12 +101,15 @@ export function upsertPage(db: Db, page: PageRecord): void {
   for (const key of page.issueKeys) insertKey.run(page.id, key);
   db.prepare("DELETE FROM pages_fts WHERE rowid = ?").run(page.id);
   db.prepare("INSERT INTO pages_fts(rowid, title, body) VALUES (?, ?, ?)").run(page.id, foldVietnamese(page.title), foldVietnamese(page.body));
+  saveFigmaLinks(db, "page", String(page.id), page.figmaLinks);
 }
 
 function deletePage(db: Db, id: number): void {
   db.prepare("DELETE FROM pages WHERE id = ?").run(id);
   db.prepare("DELETE FROM page_issues WHERE page_id = ?").run(id);
   db.prepare("DELETE FROM pages_fts WHERE rowid = ?").run(id);
+  db.prepare("DELETE FROM page_versions WHERE page_id = ?").run(id);
+  db.prepare("DELETE FROM figma_links WHERE source = 'page' AND source_id = ?").run(String(id));
 }
 
 export interface ConfluenceSyncResult {

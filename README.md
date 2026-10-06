@@ -8,9 +8,11 @@ Không thay đổi cách team đang làm việc: BA và QC vẫn viết trên Ji
 
 | Ai | Hỏi Claude | Tool được gọi |
 |---|---|---|
-| Dev | "Bắt đầu HOS-1313, cho mình ngữ cảnh" | `ticket_context`: mô tả, AC, tài liệu Confluence liên quan, file từng sửa, ticket dễ ảnh hưởng lẫn nhau, lỗi từng sửa ở cùng khu vực |
+| Dev | "Bắt đầu HOS-1313, cho mình ngữ cảnh" | `ticket_context`: mô tả, AC, tài liệu Confluence liên quan (đánh dấu trang sửa sau commit cuối), thiết kế Figma, file từng sửa, ticket dễ ảnh hưởng lẫn nhau, lỗi từng sửa ở cùng khu vực |
 | QC | "Nhánh qc/HOS-1310-… cần regression những gì?" | `test_scope`: ticket cũ có code nằm trong các file vừa sửa, lỗi cũ ở các file đó |
 | BA | "Đã có story nào về quên mã PIN chưa?" | `search`: tìm ticket, commit và tài liệu theo nghiệp vụ, có dấu hay không dấu |
+| Cả team | "Màn Figma này đã làm ở đâu?" (dán link) | `search` với link Figma: ticket, tài liệu nhắc tới frame đó, và file màn hình trong code |
+| PO, dev, QC | "Tuần này spec onboarding đổi gì? Có chỗ nào code chưa theo kịp?" | `changes`: ticket và trang đã sửa từ một ngày, dòng thêm/bớt, trang spec sửa sau khi đã code |
 | Cả team | "Spec API quên mã PIN nói gì?" | `confluence_page`: đọc một trang Confluence theo từng phần |
 | Cả team | "Vì sao thư mục `features/security` như hiện tại?" | `file_history` |
 
@@ -57,7 +59,9 @@ ctx sync [git|jira|confluence] [--full]
                                   Index git, Jira, Confluence (mặc định tất cả)
 ctx import-jira <file.json>       Nạp ticket từ file export JSON
 ctx ticket <KEY>                  Ngữ cảnh một ticket
-ctx search <từ khoá…>             Tìm ticket và tài liệu theo nghiệp vụ
+ctx search <từ khoá…|link Figma>  Tìm ticket và tài liệu theo nghiệp vụ, hoặc theo thiết kế Figma
+ctx changes [--since YYYY-MM-DD] [--key HOS-330]
+                                  Ticket và trang đã sửa (mặc định 7 ngày qua)
 ctx page <id|link> [--part n]     Đọc một trang Confluence
 ctx scope --repo <tên> [--base origin/develop] [--head HEAD]
 ctx file <đường dẫn> [--repo <tên>]
@@ -73,6 +77,8 @@ Chạy bằng `npm run ctx -- <lệnh>`, hoặc `node src/cli.ts <lệnh>`.
 - **Lỗi từng sửa:** commit có loại `fix`/`fixbug`/`hotfix`/`sửa …` ngay sau mã ticket, hoặc `feat(HOS-xxx): fix …`. Commit loại khác chỉ nhắc tới chữ fix (`refactor: … to fix …`, `test: fix flaky`) không tính.
 - **Jira:** API `/rest/api/3/search/jql`, lấy mô tả, các trường văn bản tuỳ biến (AC…), bình luận, ticket cha, liên kết.
 - **Confluence:** API v2, chỉ trang đang dùng (bỏ trang đã lưu trữ). Trang được nối với ticket qua mã `HOS-xxxx` hoặc link `/browse/HOS-xxxx` trong trang. Trang nhắc trên 10 ticket (báo cáo sprint, checklist golive) được xếp riêng thành "Có tên trong". Các lần sync sau chỉ kéo trang mới sửa, và bỏ trang đã bị xoá, lưu trữ hoặc chuyển khỏi space.
+- **Thay đổi:** mỗi lần sync, nếu mô tả/AC/bình luận/trạng thái của ticket hay nội dung trang khác bản đang có, bản cũ được giữ lại (một bản trước cho mỗi ticket/trang), nên `changes` cho thấy dòng thêm/bớt mà không cần gọi lại Atlassian. Dòng thêm/bớt chỉ có từ lần sync sau khi cập nhật lên phiên bản này. Trang được coi là "sửa sau khi đã code" khi nó nhắc một ticket và được sửa sau commit cuối của ticket đó.
+- **Figma:** link Figma trong ticket (kể cả link gắn sau chữ) và trong trang Confluence được ghi lại theo file và node, bỏ tham số chia sẻ `t=`. Màn hình trong code là các file thuộc thư mục `screens/` hoặc tên `*Screen.tsx` mà commit của các ticket đó đã sửa. Index cũ được điền link từ văn bản sẵn có ở lần mở đầu tiên; link gắn sau chữ có ở lần sync kế tiếp của ticket/trang đó (`sync --full` để có ngay).
 - **Tìm kiếm:** SQLite FTS5 trên văn bản đã bỏ dấu, nên "quen ma pin" khớp "Quên mã PIN".
 - Lockfile, ảnh, thư mục build và các mẫu trong `ignorePaths` bị loại khỏi xếp hạng.
 

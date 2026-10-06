@@ -272,6 +272,8 @@ Từ lần thứ hai trở đi, lệnh chỉ kéo những ticket và trang mới
 - "Đã có story nào về quên mã PIN chưa?"
 - "Spec onboarding nói gì về màn câu hỏi bắt buộc?"
 - "Tổng hợp nghiệp vụ liên quan tới phân quyền web admin"
+- "Tuần này spec của epic HOS-330 thay đổi gì? Trang nào sửa sau khi đã code?"
+- "Màn này đã làm ở đâu trong code? https://www.figma.com/design/…" (dán link Figma)
 
 ## Cập nhật context-hub lên phiên bản mới
 

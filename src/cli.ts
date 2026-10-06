@@ -4,9 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, type HubConfig } from "./config.ts";
 import { openDb } from "./db.ts";
-import { formatFileHistory, formatPage, formatSearch, formatStats, formatTestScope, formatTicketContext } from "./format.ts";
+import { parseFigmaLinks } from "./figma.ts";
+import { formatChanges, formatFigmaLookup, formatFileHistory, formatPage, formatSearch, formatStats, formatTestScope, formatTicketContext } from "./format.ts";
 import { startMcpServer } from "./mcp.ts";
-import { fileHistory, pageContent, search, stats, testScope, ticketContext } from "./queries.ts";
+import { changes, defaultSince, figmaLookup, fileHistory, pageContent, search, stats, testScope, ticketContext } from "./queries.ts";
 import { ConfluenceClient, syncConfluence } from "./sources/confluence.ts";
 import { syncGitRepo } from "./sources/git.ts";
 import { importIssues, JiraClient, syncJira } from "./sources/jira.ts";
@@ -17,7 +18,10 @@ const HELP = `context-hub — ngữ cảnh nghiệp vụ cho BA, dev, QC
                                     Index git, Jira, Confluence (mặc định: tất cả)
   ctx import-jira <file.json>       Nạp ticket từ file JSON export của Jira
   ctx ticket <KEY>                  Ngữ cảnh một ticket, vd: ctx ticket HOS-1313
-  ctx search <từ khoá…>             Tìm ticket và tài liệu theo nghiệp vụ, có dấu hay không dấu
+  ctx search <từ khoá…|link Figma>   Tìm ticket và tài liệu theo nghiệp vụ, có dấu hay không dấu;
+                                    với link Figma: ticket, tài liệu và màn hình code của thiết kế đó
+  ctx changes [--since YYYY-MM-DD] [--key HOS-330]
+                                    Ticket và trang đã sửa (mặc định 7 ngày qua), spec sửa sau khi đã code
   ctx page <id|link> [--part n]     Đọc một trang Confluence đã index
   ctx scope --repo <tên> [--base origin/develop] [--head HEAD]
                                     Ticket cần regression cho một nhánh
@@ -145,6 +149,7 @@ async function main(argv: string[]): Promise<void> {
     }
     case "ticket":
     case "search":
+    case "changes":
     case "scope":
     case "file":
     case "page":
@@ -177,8 +182,11 @@ function render(command: string, args: string[], db: ReturnType<typeof openDb>, 
     case "search": {
       const query = values.join(" ");
       if (!query) throw new Error("Thiếu từ khoá tìm kiếm.");
-      return formatSearch(query, search(db, query));
+      const figma = parseFigmaLinks(query)[0];
+      return figma ? formatFigmaLookup(figmaLookup(db, config, figma)) : formatSearch(query, search(db, query));
     }
+    case "changes":
+      return formatChanges(changes(db, { since: flag(args, "since") ?? defaultSince(), key: flag(args, "key")?.toUpperCase() ?? null }));
     case "scope": {
       const repo = flag(args, "repo") ?? config.repos[0]?.name;
       if (!repo) throw new Error("Thiếu --repo.");

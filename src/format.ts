@@ -1,4 +1,18 @@
-import type { FileHistory, FixCommit, IndexStats, IssueRow, PageContent, PageRef, SearchResult, TestScope, TicketContext, TicketRef } from "./queries.ts";
+import type {
+  Changes,
+  DesignRef,
+  FigmaLookup,
+  FileHistory,
+  FixCommit,
+  IndexStats,
+  IssueRow,
+  PageContent,
+  PageRef,
+  SearchResult,
+  TestScope,
+  TicketContext,
+  TicketRef
+} from "./queries.ts";
 import { truncate } from "./text.ts";
 
 // Output is read by AI tools on a fixed usage allowance, so every section is
@@ -24,6 +38,26 @@ function uniqueSubjects<T extends { subject: string }>(commits: T[]): T[] {
 /** The link ends in the page id, which is what confluence_page takes. */
 function pageLine(page: PageRef): string {
   return `- [${page.title}](${page.url}) · cập nhật ${day(page.updated)}`;
+}
+
+/** "✅ HealthOS v.2 Official · node 554-21150" */
+function designName(design: { fileName: string; nodeId: string }): string {
+  return `${design.fileName || "Figma"} · ${design.nodeId ? `node ${design.nodeId}` : "cả file"}`;
+}
+
+function designLine(design: DesignRef): string {
+  const source = design.kind === "parent" ? ` _(ticket cha ${design.from})_` : design.kind === "page" ? ` _(trong trang ${design.from})_` : "";
+  return `- [${designName(design)}](${design.url})${source}`;
+}
+
+const DIFF_LINES = 5;
+
+/** Lines an edit added and removed, a few of each, indented under their item. */
+function diffLines(diff: { added: string[]; removed: string[] } | null): string[] {
+  if (!diff) return [];
+  const shown = [...diff.added.slice(0, DIFF_LINES).map((line) => `  + ${truncate(line, 160)}`), ...diff.removed.slice(0, DIFF_LINES).map((line) => `  − ${truncate(line, 160)}`)];
+  const hidden = Math.max(0, diff.added.length - DIFF_LINES) + Math.max(0, diff.removed.length - DIFF_LINES);
+  return hidden ? [...shown, `  … và ${hidden} dòng khác`] : shown;
 }
 
 function fixLines(fixes: FixCommit[]): string[] {
@@ -66,12 +100,18 @@ export function formatTicketContext(context: TicketContext): string {
     lines.push(
       "",
       "### Tài liệu Confluence",
-      ...context.docs.map((doc) => `${pageLine(doc)}${doc.via === context.key ? "" : ` _(nhắc ticket cha ${doc.via})_`}`),
+      ...context.docs.map(
+        (doc) =>
+          `${pageLine(doc)}${doc.via === context.key ? "" : ` _(nhắc ticket cha ${doc.via})_`}${doc.editedAfterCode ? ` · ⚠ sửa sau commit cuối (${day(context.commits.last)})` : ""}`
+      ),
       ...context.similarDocs.map((doc) => `${pageLine(doc)} _(không nhắc mã ticket, nội dung gần giống)_`)
     );
     if (context.listings.length) {
       lines.push(`- Có tên trong: ${context.listings.map((page) => `[${page.title}](${page.url})`).join(", ")}`);
     }
+  }
+  if (context.designs.length) {
+    lines.push("", "### Thiết kế Figma", ...context.designs.map(designLine));
   }
 
   const { commits } = context;
@@ -118,6 +158,71 @@ export function formatSearch(query: string, result: SearchResult): string {
     lines.push("", "### Tài liệu Confluence", ...result.pages.flatMap((page) => [pageLine(page), `  > ${page.excerpt}`]));
   }
   if (!result.issues.length && !result.ticketsFromCommits.length && !result.pages.length) lines.push("_Không tìm thấy kết quả._");
+  return lines.join("\n");
+}
+
+export function formatFigmaLookup(lookup: FigmaLookup): string {
+  const lines = [`# Figma: ${designName({ fileName: lookup.fileName, nodeId: lookup.link.nodeId })}`, lookup.link.url];
+  if (!lookup.tickets.length && !lookup.pages.length) {
+    lines.push("", "_Chưa có ticket hay tài liệu nào nhắc tới thiết kế này._");
+  }
+  if (lookup.tickets.length) {
+    lines.push("", "### Ticket nhắc tới thiết kế này", ...lookup.tickets.slice(0, 10).map((ref) => `- ${label(ref)}`));
+  }
+  if (lookup.pages.length) {
+    lines.push("", "### Tài liệu nhắc tới thiết kế này", ...lookup.pages.slice(0, 6).map(pageLine));
+  }
+  if (lookup.tickets.length) {
+    lines.push("", "### Màn hình trong code");
+    lines.push(
+      ...(lookup.screens.length
+        ? lookup.screens.map((screen) => `- \`${screen.repo}:${screen.path}\` — ${screen.keys.join(", ")}`)
+        : ["_Các ticket trên chưa có commit nào sửa file màn hình._"])
+    );
+  }
+  if (lookup.otherNodes.length) {
+    lines.push(
+      "",
+      "### Node khác trong cùng file",
+      ...lookup.otherNodes.map((node) => `- [node ${node.nodeId || "cả file"}](${node.url}) — ${[...node.keys, ...node.pages].join(", ")}`)
+    );
+  }
+  return lines.join("\n");
+}
+
+export function formatChanges(result: Changes): string {
+  const scope = result.key ? ` · phạm vi ${result.key}${result.scopeSize ? ` và ${result.scopeSize} ticket con` : ""}` : "";
+  const lines = [`# Thay đổi từ ${result.since}${scope}`];
+  if (!result.issues.length && !result.pages.length) {
+    lines.push("", "_Không có ticket hay trang nào thay đổi._");
+    return lines.join("\n");
+  }
+
+  if (result.drifting.length) {
+    lines.push(
+      "",
+      "### ⚠ Spec sửa sau khi đã code (cần đối chiếu)",
+      ...result.drifting.map(
+        (page) =>
+          `- [${page.title}](${page.url}) sửa ${day(page.updated)} — sau commit cuối của ${page.drift.map((entry) => `${entry.key} (${day(entry.lastCommit)})`).join(", ")}`
+      )
+    );
+  }
+  if (result.pages.length) {
+    lines.push("", `### Trang Confluence đã sửa (${result.totalPages})`);
+    for (const page of result.pages) {
+      lines.push(`${pageLine(page)}${page.versionDate ? ` · so với bản ${day(page.versionDate)}` : ""}`, ...diffLines(page.diff));
+    }
+    if (result.totalPages > result.pages.length) lines.push(`- … và ${result.totalPages - result.pages.length} trang khác`);
+  }
+  if (result.issues.length) {
+    lines.push("", `### Ticket đã cập nhật (${result.totalIssues})`);
+    for (const entry of result.issues) {
+      const status = entry.statusBefore ? ` · trạng thái ${entry.statusBefore} → ${entry.issue.status}` : "";
+      lines.push(`- ${label({ key: entry.issue.key, issue: entry.issue })} · ${day(entry.issue.updated)}${entry.isNew ? " · mới" : ""}${status}`, ...diffLines(entry.diff));
+    }
+    if (result.totalIssues > result.issues.length) lines.push(`- … và ${result.totalIssues - result.issues.length} ticket khác`);
+  }
   return lines.join("\n");
 }
 

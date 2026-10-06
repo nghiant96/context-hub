@@ -1,5 +1,6 @@
 import { foldVietnamese, redact } from "../text.ts";
 import { getState, inTransaction, setState, type Db } from "../db.ts";
+import { parseFigmaLinks, saveFigmaLinks, type FigmaLink } from "../figma.ts";
 import { adfToText, AtlassianClient } from "./atlassian.ts";
 
 export interface IssueRecord {
@@ -20,6 +21,8 @@ export interface IssueRecord {
   resolution: string | null;
   url: string;
   links: Array<{ toKey: string; linkType: string }>;
+  /** Read from the raw documents, so links behind link text count too. */
+  figmaLinks: FigmaLink[];
 }
 
 interface JiraField {
@@ -86,6 +89,9 @@ export function toIssueRecord(issue: JiraIssue, textFields: Map<string, string>,
     if (text) texts.push({ field: name, text: redact(text) });
   }
   const comments: Array<{ author?: { displayName?: string }; body?: unknown }> = fields.comment?.comments ?? [];
+  const rawDocuments = [fields.description, ...[...textFields.keys()].map((id) => fields[id]), ...comments.map((comment) => comment.body)]
+    .map((value) => (typeof value === "string" ? value : JSON.stringify(value ?? "")))
+    .join("\n");
   if (comments.length > 0) {
     const thread = comments.map((comment) => `- ${comment.author?.displayName ?? "?"}: ${adfToText(comment.body)}`).join("\n");
     texts.push({ field: "Bình luận", text: redact(thread) });
@@ -113,11 +119,36 @@ export function toIssueRecord(issue: JiraIssue, textFields: Map<string, string>,
     updated: fields.updated ?? null,
     resolution: fields.resolution?.name ?? null,
     url: `${baseUrl}/browse/${issue.key}`,
-    links
+    links,
+    figmaLinks: parseFigmaLinks(rawDocuments)
   };
 }
 
+/** A ticket's readable text — description, then each text field and the comments — as kept between versions. */
+export function issueText(description: string | null, texts: Array<{ field: string; text: string }>): string {
+  return [description ?? "", ...texts.map((entry) => `${entry.field}:\n${entry.text}`)].filter(Boolean).join("\n\n");
+}
+
+/** Keep what the ticket said before this sync changed its text or status. */
+function keepPreviousVersion(db: Db, record: IssueRecord): void {
+  const before = db.prepare("SELECT status, updated, description FROM issues WHERE key = ?").get(record.key) as
+    | { status: string | null; updated: string | null; description: string | null }
+    | undefined;
+  if (!before) return;
+  const texts = db.prepare("SELECT field, text FROM issue_texts WHERE key = ? ORDER BY position").all(record.key) as Array<{ field: string; text: string }>;
+  const beforeText = issueText(before.description, texts);
+  if (beforeText === issueText(record.description, record.texts) && before.status === record.status) return;
+  db.prepare("INSERT OR REPLACE INTO issue_versions(key, updated, status, text, changed) VALUES (?, ?, ?, ?, ?)").run(
+    record.key,
+    before.updated,
+    before.status,
+    beforeText,
+    record.updated
+  );
+}
+
 export function upsertIssue(db: Db, record: IssueRecord): void {
+  keepPreviousVersion(db, record);
   db.prepare(
     `INSERT INTO issues(key, project, type, status, priority, summary, description, extra_text, labels, components, parent_key, created, updated, resolution, url)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -151,6 +182,7 @@ export function upsertIssue(db: Db, record: IssueRecord): void {
   const insertText = db.prepare("INSERT INTO issue_texts(key, position, field, text) VALUES (?, ?, ?, ?)");
   record.texts.forEach((entry, position) => insertText.run(record.key, position, entry.field, entry.text));
   rebuildIssueText(db, record.key);
+  saveFigmaLinks(db, "issue", record.key, record.figmaLinks);
 }
 
 /** Long text repeated verbatim on this many issues is a template, not content. */

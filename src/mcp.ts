@@ -5,13 +5,15 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { loadConfig, type HubConfig } from "./config.ts";
 import { openDbReadOnly, type Db } from "./db.ts";
-import { formatFileHistory, formatPage, formatSearch, formatTestScope, formatTicketContext } from "./format.ts";
-import { fileHistory, pageContent, search, testScope, ticketContext } from "./queries.ts";
+import { parseFigmaLinks } from "./figma.ts";
+import { formatChanges, formatFigmaLookup, formatFileHistory, formatPage, formatSearch, formatTestScope, formatTicketContext } from "./format.ts";
+import { changes, defaultSince, figmaLookup, fileHistory, pageContent, search, testScope, ticketContext } from "./queries.ts";
 
 const INSTRUCTIONS = `context-hub trả về ngữ cảnh nghiệp vụ của dự án: ticket Jira (mô tả, AC, bình luận) và tài liệu Confluence, nối với lịch sử code.
 Dùng ticket_context trước khi làm hoặc review một ticket; test_scope để chọn phạm vi regression cho một nhánh;
-search khi chỉ biết mô tả nghiệp vụ; file_history để biết vì sao một file/thư mục có hình dạng như hiện tại;
-confluence_page để đọc một trang tài liệu mà các tool kia trả về.`;
+search khi chỉ biết mô tả nghiệp vụ, hoặc với một link Figma để tìm ticket và màn hình code làm từ thiết kế đó;
+changes để biết ticket/tài liệu nào vừa sửa và spec nào sửa sau khi đã code; file_history để biết vì sao một file/thư mục
+có hình dạng như hiện tại; confluence_page để đọc một trang tài liệu mà các tool kia trả về.`;
 
 type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
@@ -52,14 +54,34 @@ export function createMcpServer(config: HubConfig, openDb: () => Db | null): Mcp
     "search",
     {
       title: "Tìm ticket theo nghiệp vụ",
-      description: "Tìm theo từ khoá nghiệp vụ, có dấu hay không dấu đều được: ticket Jira, nội dung commit và tài liệu Confluence.",
+      description:
+        "Tìm theo từ khoá nghiệp vụ, có dấu hay không dấu đều được: ticket Jira, nội dung commit và tài liệu Confluence. Đưa link Figma thì trả về ticket, tài liệu và màn hình code làm từ thiết kế đó.",
       inputSchema: {
-        query: z.string().describe("Từ khoá, ví dụ: quên mã PIN"),
+        query: z.string().describe("Từ khoá, ví dụ: quên mã PIN; hoặc một link Figma"),
         limit: z.number().int().min(1).max(30).optional()
       },
       annotations: { readOnlyHint: true }
     },
-    async ({ query, limit }) => run((db) => formatSearch(query, search(db, query, limit ?? 10)))
+    async ({ query, limit }) =>
+      run((db) => {
+        const figma = parseFigmaLinks(query)[0];
+        return figma ? formatFigmaLookup(figmaLookup(db, config, figma)) : formatSearch(query, search(db, query, limit ?? 10));
+      })
+  );
+
+  server.registerTool(
+    "changes",
+    {
+      title: "Thay đổi gần đây",
+      description:
+        "Ticket Jira và trang Confluence sửa từ một ngày (mặc định 7 ngày trước), kèm dòng thêm/bớt so với bản trước, và cảnh báo trang spec sửa sau commit cuối của ticket (code có thể đã lệch spec). Truyền key của epic/story để chỉ xem phạm vi đó.",
+      inputSchema: {
+        since: z.string().optional().describe("Từ ngày YYYY-MM-DD, mặc định 7 ngày trước"),
+        key: z.string().optional().describe("Epic hoặc story, ví dụ HOS-330: chỉ xem ticket đó, ticket con và tài liệu nhắc tới chúng")
+      },
+      annotations: { readOnlyHint: true }
+    },
+    async ({ since, key }) => run((db) => formatChanges(changes(db, { since: since?.trim() || defaultSince(), key: key?.trim().toUpperCase() || null })))
   );
 
   server.registerTool(

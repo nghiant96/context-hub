@@ -69,6 +69,27 @@ export function splitText(text: string, size: number): string[] {
   return parts;
 }
 
+/**
+ * Lines one text has and the other lacks, compared as trimmed lines and
+ * counting repeats. Order within a text is ignored: for a spec, "which rules
+ * appeared or went away" is the useful answer, and it stays short when a
+ * paragraph merely moved.
+ */
+export function lineDiff(before: string, after: string): { added: string[]; removed: string[] } {
+  const lines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const counts = (list: string[]) => list.reduce((map, line) => map.set(line, (map.get(line) ?? 0) + 1), new Map<string, number>());
+  const unmatched = (list: string[], other: Map<string, number>) =>
+    list.filter((line) => {
+      const left = other.get(line) ?? 0;
+      if (left === 0) return true;
+      other.set(line, left - 1);
+      return false;
+    });
+  const old = lines(before);
+  const current = lines(after);
+  return { added: unmatched(current, counts(old)), removed: unmatched(old, counts(current)) };
+}
+
 /** Shorten text for compact AI context, marking the cut. */
 export function truncate(text: string, maxChars: number): string {
   const trimmed = text.trim();

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { backfillFigmaLinks } from "./figma.ts";
 
 export type Db = DatabaseSync;
 
@@ -109,6 +110,37 @@ CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
   title, body, tokenize = "unicode61 remove_diacritics 2"
 );
 
+-- The text a page or ticket had before its latest change, kept by sync when
+-- the content differs, so "what changed" can be answered without asking
+-- Atlassian. One previous version each: enough for a daily sync. "updated"
+-- dates the old version, "changed" the edit that replaced it.
+CREATE TABLE IF NOT EXISTS page_versions (
+  page_id INTEGER PRIMARY KEY,
+  updated TEXT,
+  body TEXT,
+  changed TEXT
+);
+CREATE TABLE IF NOT EXISTS issue_versions (
+  key TEXT PRIMARY KEY,
+  updated TEXT,
+  status TEXT,
+  text TEXT,
+  changed TEXT
+);
+
+-- Figma links named by tickets ('issue', key) and pages ('page', id). An
+-- empty node_id is a link to the whole file.
+CREATE TABLE IF NOT EXISTS figma_links (
+  source TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  file_key TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  file_name TEXT,
+  url TEXT NOT NULL,
+  PRIMARY KEY (source, source_id, file_key, node_id)
+);
+CREATE INDEX IF NOT EXISTS figma_links_node ON figma_links(file_key, node_id);
+
 CREATE TABLE IF NOT EXISTS sync_state (
   source TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -120,7 +152,9 @@ export function openDb(dbPath: string): Db {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA journal_mode = WAL;");
+  const beforeFigma = !hasTable(db, "figma_links");
   db.exec(SCHEMA);
+  if (beforeFigma) inTransaction(db, () => backfillFigmaLinks(db));
   return db;
 }
 
