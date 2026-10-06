@@ -37,7 +37,40 @@ Muốn dùng thêm trong Claude Code, xem mục [Claude Code dùng chung dữ li
 
 ## Cách 2: Claude Code, không cần repo
 
-Chạy server có sẵn trong file `.mcpb` trực tiếp từ Claude Code. Server tự tải Jira và Confluence khi Claude Code đang mở. Không cần Git, GitHub CLI hay `npm install`. Trên Windows dùng **Command Prompt**, xem [Cách dùng cửa sổ lệnh](#cách-dùng-cửa-sổ-lệnh-đọc-trước-1-phút).
+Chạy server có sẵn trong file `.mcpb` trực tiếp từ Claude Code. Server tự tải Jira và Confluence khi Claude Code đang mở. Không cần Git, GitHub CLI hay `npm install`.
+
+### Cài bằng script (khuyên dùng)
+
+1. **Tải 2 file** ở trang Releases về thư mục **Downloads**:
+   - `context-hub-<phiên bản>.mcpb`
+   - Windows: `cai-dat-context-hub.cmd`. Mac: `cai-dat-context-hub.sh`.
+2. **Chạy script:**
+   - **Windows:** bấm đúp `cai-dat-context-hub.cmd`. Nếu Windows hỏi có chạy file tải từ Internet không, chọn **Run** (hoặc **More info → Run anyway**).
+   - **Mac:** mở Terminal và chạy lệnh dưới đây.
+
+```bash
+bash ~/Downloads/cai-dat-context-hub.sh
+```
+
+3. **Trả lời vài câu hỏi:**
+   - **Email Atlassian.**
+   - **API token:** tạo theo [Bước 5](#bước-5-tạo-api-token-atlassian), rồi dán vào. Chữ không hiện ra màn hình là bình thường.
+   - Các ô có giá trị mặc định trong ngoặc vuông thì bấm **Enter**.
+   - **Thư mục repo:** dev và QC điền đường dẫn repo, nhiều repo thì cách nhau bằng dấu `;`. BA và PO bấm Enter để bỏ qua.
+
+Script tự làm hết các bước bằng tay ở dưới:
+- Kiểm tra Node.js. Trên Windows, nếu chưa có thì đề nghị cài bằng winget.
+- Giải nén file `.mcpb`.
+- Thử đăng nhập Atlassian, sai token thì cho nhập lại.
+- Gắn context-hub vào Claude Code và kiểm tra kết nối.
+
+Nếu máy đã có extension Claude Desktop, script hỏi có muốn dùng chung dữ liệu với extension không. Chọn có thì không cần nhập token.
+
+**Chạy lại script** bất cứ lúc nào để đổi token hoặc lên bản mới: tải file `.mcpb` mới về Downloads rồi chạy lại.
+
+### Cài bằng tay
+
+Trên Windows dùng **Command Prompt**, xem [Cách dùng cửa sổ lệnh](#cách-dùng-cửa-sổ-lệnh-đọc-trước-1-phút).
 
 1. **Cài Node.js** theo [Bước 2](#bước-2-cài-nodejs-bản-24-trở-lên).
 2. **Tải file `.mcpb`** ở trang Releases về thư mục Downloads.

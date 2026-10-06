@@ -1,12 +1,17 @@
 import os from "node:os";
 import { getState } from "./db.ts";
 import { canAutoSync, createAutoSync, extensionConfig, missingIndexMessage, noticeFor, readOnlyMissingIndexMessage, staleNotice } from "./extension.ts";
+import { runInstaller } from "./install.ts";
 import { startMcpServer } from "./mcp-server.ts";
 
 // Entry point of the Claude Desktop extension bundle (see scripts/build-extension.ts).
 // stdout carries the MCP protocol, so everything else is logged to stderr,
 // which Claude Desktop keeps in its MCP logs.
 const log = (message: string) => console.error(`[context-hub] ${message}`);
+
+if (process.argv[2] === "--install") {
+  process.exit(await runInstaller());
+}
 
 const config = extensionConfig(process.env, process.argv.slice(2), os.homedir());
 

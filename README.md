@@ -46,7 +46,7 @@ Số điện thoại, email, số CCCD/CMND trong mô tả, bình luận và tra
 
 ## Extension cho Claude Desktop
 
-Người không dùng terminal có thể cài một file `.mcpb` tải ở [Releases](https://github.com/nghiant96/context-hub/releases/latest), xem [hướng dẫn](docs/cai-dat.md#cách-1-cài-extension-cho-claude-desktop). Cùng file đó chạy được trong Claude Code mà không cần clone repo ([cách 2](docs/cai-dat.md#cách-2-claude-code-không-cần-repo)). Extension chạy bằng Node có sẵn trong Claude Desktop, nhận email và token Atlassian qua form cài đặt, lưu index ở `~/.context-hub/` và tự đồng bộ vài giờ một lần.
+Người không dùng terminal có thể cài một file `.mcpb` tải ở [Releases](https://github.com/nghiant96/context-hub/releases/latest), xem [hướng dẫn](docs/cai-dat.md#cách-1-cài-extension-cho-claude-desktop). Cùng file đó chạy được trong Claude Code mà không cần clone repo ([cách 2](docs/cai-dat.md#cách-2-claude-code-không-cần-repo)): script trong `installers/` (đăng kèm mỗi release) giải nén nó rồi chạy `node server/index.mjs --install` (`src/install.ts`), trình cài hỏi email và token, thử đăng nhập rồi gọi `claude mcp add`. Đặt `CTX_INSTALL_DRY_RUN=1` để chỉ in lệnh mà không đổi cấu hình Claude Code. Extension chạy bằng Node có sẵn trong Claude Desktop, nhận email và token Atlassian qua form cài đặt, lưu index ở `~/.context-hub/` và tự đồng bộ vài giờ một lần.
 
 Build file cài:
 
