@@ -1,6 +1,6 @@
 {
   "name": "context-hub",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Ngữ cảnh nghiệp vụ dùng chung cho BA, dev, QC: index Jira, Confluence và lịch sử git vào SQLite, phục vụ AI qua MCP.",
   "type": "module",

@@ -3,7 +3,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { getState, openDb } from "../src/db.ts";
-import { createAutoSync, explainSyncError, extensionConfig, isSyncDue, missingIndexMessage, noticeFor } from "../src/extension.ts";
+import {
+  canAutoSync,
+  createAutoSync,
+  explainSyncError,
+  extensionConfig,
+  isSyncDue,
+  missingIndexMessage,
+  noticeFor,
+  readOnlyMissingIndexMessage,
+  staleNotice
+} from "../src/extension.ts";
 import { tempDir } from "./helpers.ts";
 
 test("extension settings come from the install form, and unset ones are ignored", () => {
@@ -103,4 +113,17 @@ test("auto-sync runs once at a time, records success, and reports errors in answ
   assert.match(noticeFor(failing.status()) ?? "", /⚠ Lần đồng bộ gần nhất bị lỗi: .*API token/);
   assert.match(missingIndexMessage(failing.status()), /chưa tải được dữ liệu/);
   assert.match(missingIndexMessage(sync.status()), /đang tải dữ liệu/);
+});
+
+test("without credentials the server only reads, and says when the data has gone stale", () => {
+  const home = tempDir("ctx-home");
+  assert.equal(canAutoSync(extensionConfig({ JIRA_BASE_URL: "https://example.atlassian.net" }, [], home)), false);
+  assert.equal(canAutoSync(extensionConfig({ JIRA_BASE_URL: "https://example.atlassian.net", JIRA_EMAIL: "a", JIRA_API_TOKEN: "${user_config.jira_api_token}" }, [], home)), false);
+  assert.equal(canAutoSync(extensionConfig({ JIRA_BASE_URL: "https://example.atlassian.net", JIRA_EMAIL: "a", JIRA_API_TOKEN: "b" }, [], home)), true);
+
+  const now = new Date("2026-10-08T12:00:00Z");
+  assert.equal(staleNotice(null, now), null);
+  assert.equal(staleNotice("2026-10-08T01:00:00Z", now), null);
+  assert.match(staleNotice("2026-10-06T09:00:00Z", now) ?? "", /cập nhật lần cuối 2026-10-06/);
+  assert.match(readOnlyMissingIndexMessage("/x/context.db"), /extension context-hub trong Claude Desktop/);
 });

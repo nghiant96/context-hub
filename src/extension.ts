@@ -85,6 +85,28 @@ export function noticeFor(status: SyncStatus): string | null {
   return null;
 }
 
+/**
+ * Whether this server can sync. Without Atlassian credentials it only reads
+ * an index another server keeps fresh — the Claude Desktop extension, for a
+ * Claude Code configuration pointed at the same data folder — and must not
+ * record a sync it did not do.
+ */
+export function canAutoSync(config: HubConfig): boolean {
+  return Boolean(config.jira.baseUrl && config.jira.email && config.jira.apiToken);
+}
+
+const STALE_AFTER_MS = 24 * HOUR_MS;
+
+/** For a read-only server: say so when the server that syncs has not done it for a day. */
+export function staleNotice(lastSync: string | null, now: Date): string | null {
+  if (!lastSync || now.getTime() - Date.parse(lastSync) < STALE_AFTER_MS) return null;
+  return `_Dữ liệu cập nhật lần cuối ${lastSync.slice(0, 10)}. Mở Claude Desktop và bật extension context-hub để đồng bộ._`;
+}
+
+export function readOnlyMissingIndexMessage(dbPath: string): string {
+  return `Chưa có dữ liệu ở ${dbPath}. Cài và bật extension context-hub trong Claude Desktop (nó tự đồng bộ), hoặc chạy server này với JIRA_EMAIL và JIRA_API_TOKEN.`;
+}
+
 export function missingIndexMessage(status: SyncStatus): string {
   if (status.lastError) return `context-hub chưa tải được dữ liệu: ${status.lastError}`;
   return "context-hub đang tải dữ liệu Jira và Confluence lần đầu, thường mất vài phút. Hỏi lại sau ít phút nhé.";

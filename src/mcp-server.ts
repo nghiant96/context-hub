@@ -19,7 +19,7 @@ export interface ServerOptions {
   /** What to say when there is no index yet. */
   missingIndex?: () => string;
   /** A line put before every answer, such as "first sync still running". */
-  notice?: () => string | null;
+  notice?: (db: Db) => string | null;
 }
 
 /**
@@ -27,7 +27,7 @@ export interface ServerOptions {
  * each call reads the latest index — a sync can run while AI tools query.
  */
 export function createMcpServer(config: HubConfig, openDb: () => Db | null, options: ServerOptions = {}): McpServer {
-  const server = new McpServer({ name: "context-hub", version: "0.2.1" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "context-hub", version: "0.2.2" }, { instructions: INSTRUCTIONS });
   const missingIndex = options.missingIndex ?? (() => "Chưa có index. Chạy `npm run ctx -- sync` trong thư mục context-hub.");
 
   const run = (render: (db: Db) => string): ToolResult => {
@@ -36,7 +36,7 @@ export function createMcpServer(config: HubConfig, openDb: () => Db | null, opti
       return { content: [{ type: "text", text: missingIndex() }], isError: true };
     }
     try {
-      const notice = options.notice?.();
+      const notice = options.notice?.(db);
       return { content: [{ type: "text", text: notice ? `${notice}\n\n${render(db)}` : render(db) }] };
     } catch (error) {
       return { content: [{ type: "text", text: `Lỗi: ${(error as Error).message}` }], isError: true };

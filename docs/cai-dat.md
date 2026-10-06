@@ -262,6 +262,8 @@ node -e "console.log(JSON.stringify({mcpServers:{'context-hub':{command:process.
 
 ### Cách B: Claude Code (terminal, hoặc tab Code trong Claude Desktop)
 
+> Đã cài extension Claude Desktop (cách nhanh)? Claude Code có thể dùng chung dữ liệu của extension, không cần làm lại các bước ở trên: xem mục "Gắn vào Claude Code" trong README.
+
 Chạy một lệnh, không cần sửa đường dẫn. Lệnh này giả định bạn đã tải code về thư mục người dùng như ở bước 4.
 
 Mac:

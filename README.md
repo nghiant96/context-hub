@@ -58,6 +58,18 @@ Lệnh này gom `src/extension-main.ts` cùng các thư viện thành một file
 
 ## Gắn vào Claude Code
 
+Có hai cách, chọn một:
+
+**Dùng chung index với extension Claude Desktop** (đã cài extension). Claude Code chạy server của extension mà không cần email hay token, nên chỉ đọc `~/.context-hub/`, còn extension trong Claude Desktop lo đồng bộ. Truyền thêm thư mục repo để `test_scope` đọc được nhánh:
+
+```bash
+claude mcp add context-hub -s user -- node "$HOME/Library/Application Support/Claude/Claude Extensions/local.mcpb.nghiant96.context-hub/server/index.mjs" "$HOME/Documents/OM/healthos-meta/mobile/healthos" "$HOME/Documents/OM/healthos-meta/mobile/healthos-app-master"
+```
+
+Trên Windows, server nằm ở `%APPDATA%\Claude\Claude Extensions\local.mcpb.nghiant96.context-hub\server\index.mjs`. Máy cần Node 22.13 trở lên. Tên repo là tên thư mục, nên phải trùng với thư mục đã chọn trong extension. Nếu extension lâu không đồng bộ (Claude Desktop không mở), câu trả lời sẽ ghi chú ngày cập nhật cuối.
+
+**Chạy từ repo này** (index riêng ở `data/`, tự chạy `ctx sync`):
+
 ```bash
 claude mcp add context-hub -s user -- node /đường/dẫn/tới/context-hub/src/mcp.ts
 ```
