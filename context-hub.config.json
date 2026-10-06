@@ -1,0 +1,27 @@
+{
+  "dbPath": "data/context.db",
+  "jira": {
+    "baseUrl": "https://onemount.atlassian.net",
+    "projects": [
+      "HOS"
+    ]
+  },
+  "confluence": {
+    "spaces": [
+      "Healthcare"
+    ]
+  },
+  "repos": [
+    {
+      "name": "healthos",
+      "path": "../healthos-meta/mobile/healthos"
+    },
+    {
+      "name": "healthos-app-master",
+      "path": "../healthos-meta/mobile/healthos-app-master"
+    }
+  ],
+  "ignorePaths": [
+    "^docs/generated/"
+  ]
+}

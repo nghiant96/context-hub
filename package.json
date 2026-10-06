@@ -1,0 +1,27 @@
+{
+  "name": "context-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ngữ cảnh nghiệp vụ dùng chung cho BA, dev, QC: index Jira, Confluence và lịch sử git vào SQLite, phục vụ AI qua MCP.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "ctx": "./src/cli.ts"
+  },
+  "scripts": {
+    "ctx": "node src/cli.ts",
+    "mcp": "node src/mcp.ts",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2"
+  }
+}

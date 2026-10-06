@@ -1,0 +1,5 @@
+node_modules/
+# The index holds company data (Jira content, commit history). Never commit it.
+data/
+.env
+.DS_Store
